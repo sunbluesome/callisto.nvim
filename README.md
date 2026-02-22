@@ -2,8 +2,9 @@
 
 Edit Jupyter notebooks in Neovim with full LSP support -- no scattered files, no missed changes.
 
-<!-- TODO: demo screencast -->
-<!-- ![demo](https://...) -->
+
+https://github.com/user-attachments/assets/9ab3fbe1-617c-4c8f-8dd5-4a9c51380c85
+
 
 ## Why callisto?
 
