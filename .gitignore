@@ -1,0 +1,5 @@
+*.swp
+*.swo
+*~
+doc/tags
+.DS_Store

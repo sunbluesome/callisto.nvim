@@ -1,0 +1,242 @@
+*callisto.txt*  Edit Jupyter notebooks as Python scripts in Neovim
+
+Author:  sunbluesome
+License: MIT
+Repository: https://github.com/sunbluesome/callisto.nvim
+
+==============================================================================
+CONTENTS                                                   *callisto-contents*
+
+  1. Introduction .......................... |callisto-introduction|
+  2. Requirements .......................... |callisto-requirements|
+  3. Installation .......................... |callisto-installation|
+  4. Configuration ......................... |callisto-configuration|
+  5. Commands .............................. |callisto-commands|
+  6. Keymaps ............................... |callisto-keymaps|
+  7. Events ................................ |callisto-events|
+  8. How It Works .......................... |callisto-how-it-works|
+  9. Health Check .......................... |callisto-health|
+
+==============================================================================
+1. INTRODUCTION                                        *callisto-introduction*
+
+callisto.nvim is a Neovim plugin that enables editing Jupyter notebooks
+(`.ipynb` files) as Python scripts with full LSP support.
+
+It uses jupytext to transparently convert `.ipynb` files to Python
+(`py:percent` format) in a temporary directory. Your project stays clean --
+no extra files are generated.
+
+Key features:
+- Opens `.ipynb` files as Python with full LSP, treesitter, and completion
+- Saves back to `.ipynb` transparently on |:write|
+- Watches for external changes and auto-reloads the buffer
+- Execute notebooks in-place via nbconvert
+- Export notebooks to Markdown
+
+==============================================================================
+2. REQUIREMENTS                                        *callisto-requirements*
+
+- Neovim >= 0.10
+- jupytext (https://github.com/mwouts/jupytext)
+  Install with: `pip install jupytext`
+- jupyter nbconvert (https://nbconvert.readthedocs.io/)
+  Install with: `pip install nbconvert`
+  Required for |:NotebookRun| and |:NotebookExport|
+
+==============================================================================
+3. INSTALLATION                                        *callisto-installation*
+
+Using lazy.nvim (https://github.com/folke/lazy.nvim): >lua
+
+  { "sunbluesome/callisto.nvim", opts = {} }
+<
+
+==============================================================================
+4. CONFIGURATION                                      *callisto-configuration*
+
+                                                            *callisto.setup()*
+callisto.setup({opts})
+
+  Configure callisto.nvim. Called automatically by lazy.nvim when using
+  `opts`. Default values are shown below. You only need to specify values
+  you want to change.
+
+  >lua
+  require("callisto").setup({
+    tmpdir = nil,
+    sync = false,
+    venv = ".venv",
+    run = {
+      auto_export = true,
+    },
+    watcher = {
+      debounce_ms = 200,
+      restart_delay_ms = 300,
+    },
+    keys = {
+      run = "<leader>nr",
+      export = "<leader>ne",
+    },
+  })
+<
+
+  Options:
+
+  tmpdir                                        *callisto-config-tmpdir*
+      Type: `string?`, Default: `nil`
+      Base directory for temporary files. When `nil`, uses the OS
+      default temporary directory (e.g. `/tmp`). Ignored when
+      |callisto-config-sync| is enabled.
+
+  sync                                            *callisto-config-sync*
+      Type: `boolean`, Default: `false`
+      When `true`, `.py` files are saved alongside `.ipynb` files
+      instead of in a temporary directory, and are not deleted on
+      buffer close. Opening a `.py` file that has a paired `.ipynb`
+      in the same directory automatically sets up notebook sync
+      (file watcher, save-to-notebook, keymaps).
+
+  venv                                            *callisto-config-venv*
+      Type: `string?`, Default: `".venv"`
+      Name of the venv directory to search for `jupytext` and
+      `jupyter` commands. The directory is searched relative to
+      the current working directory. If found, the venv's `bin/`
+      is prepended to PATH when running external commands. Set to
+      `nil` to disable venv detection and use system PATH only.
+
+  run.auto_export                          *callisto-config-auto-export*
+      Type: `boolean`, Default: `true`
+      When `true`, automatically export the notebook to Markdown after
+      |:NotebookRun| completes successfully.
+
+  watcher.debounce_ms                    *callisto-config-debounce-ms*
+      Type: `integer`, Default: `200`
+      Debounce delay in milliseconds for external change detection.
+      Multiple rapid file system events are coalesced into a single
+      reload after this delay.
+
+  watcher.restart_delay_ms          *callisto-config-restart-delay-ms*
+      Type: `integer`, Default: `300`
+      Delay in milliseconds before restarting the file watcher after
+      a write operation. Prevents the watcher from detecting the
+      plugin's own writes as external changes.
+
+  keys.run                                    *callisto-config-keys-run*
+      Type: `string?`, Default: `"<leader>nr"`
+      Buffer-local keymap for |:NotebookRun|. Set to `nil` to disable.
+
+  keys.export                              *callisto-config-keys-export*
+      Type: `string?`, Default: `"<leader>ne"`
+      Buffer-local keymap for |:NotebookExport|. Set to `nil` to disable.
+
+==============================================================================
+5. COMMANDS                                                *callisto-commands*
+
+                                                              *:NotebookRun*
+:NotebookRun
+  Execute the current notebook in-place using `jupyter nbconvert
+  --execute --inplace`. The buffer is automatically saved before
+  execution if it has unsaved changes.
+
+  After successful execution, the buffer is reloaded to reflect any
+  new output cells. If |callisto-config-auto-export| is enabled,
+  the notebook is also exported to Markdown automatically.
+
+  The file watcher is temporarily stopped during execution and
+  restarted after completion.
+
+                                                           *:NotebookExport*
+:NotebookExport
+  Export the current notebook as Markdown to the same directory as
+  the `.ipynb` file using `jupyter nbconvert --to markdown`.
+
+  The buffer is automatically saved before export if it has unsaved
+  changes. The exported Markdown file includes any existing output
+  cells (execution results, plots, etc.).
+
+==============================================================================
+6. KEYMAPS                                                  *callisto-keymaps*
+
+The following buffer-local keymaps are registered in notebook buffers:
+
+  Key             Command           Description ~
+  `<leader>nr`    `:NotebookRun`    Execute notebook
+  `<leader>ne`    `:NotebookExport` Export notebook to Markdown
+
+These keymaps are only active in buffers opened via callisto (i.e.
+`.ipynb` files). They do not affect normal Python files.
+
+Keymaps can be customized or disabled via |callisto-config-keys-run|
+and |callisto-config-keys-export|.
+
+==============================================================================
+7. EVENTS                                                    *callisto-events*
+
+callisto.nvim emits |User| autocmd events for extensibility:
+
+                                                  *CallistoNotebookWritten*
+CallistoNotebookWritten
+  Fired after buffer changes are saved back to the `.ipynb` file
+  (i.e. after |:write| completes successfully).
+
+  Callback receives `args.data.bufnr` with the buffer number.
+
+                                                 *CallistoNotebookReloaded*
+CallistoNotebookReloaded
+  Fired after an external change to the `.ipynb` file is detected
+  and the buffer content is reloaded.
+
+  Callback receives `args.data.bufnr` with the buffer number.
+
+  Example: >lua
+  vim.api.nvim_create_autocmd("User", {
+    pattern = "CallistoNotebookWritten",
+    callback = function(args)
+      print("Notebook saved: buffer " .. args.data.bufnr)
+    end,
+  })
+<
+
+==============================================================================
+8. HOW IT WORKS                                        *callisto-how-it-works*
+
+Opening a notebook:
+
+  1. User opens a `.ipynb` file (e.g. `:edit test.ipynb`)
+  2. callisto intercepts the read via |BufReadCmd|
+  3. jupytext converts `.ipynb` to `.py` in a temporary directory
+  4. The converted content is loaded into the buffer
+  5. The buffer is renamed to `.py` for LSP compatibility
+  6. |BufReadPre| is fired manually to trigger lazy-loaded plugins
+  7. Filetype is set to `python` (LSP, treesitter activate)
+  8. A file watcher starts monitoring the `.ipynb` file
+
+Saving changes:
+
+  1. User saves with `:w`
+  2. callisto intercepts the write via |BufWriteCmd|
+  3. The file watcher is temporarily stopped
+  4. Buffer content is written to the temp `.py` file
+  5. jupytext converts `.py` back to `.ipynb` with `--update`
+     (preserving existing output cells)
+  6. |CallistoNotebookWritten| event is emitted
+  7. The file watcher restarts after a short delay
+
+External change detection:
+
+  1. An external tool modifies the `.ipynb` file
+  2. The file watcher (libuv fs_event) detects the change
+  3. After a debounce delay, callisto checks if the buffer is clean
+  4. If the buffer has unsaved changes, a warning is shown
+  5. Otherwise, jupytext re-converts and the buffer is updated
+  6. |CallistoNotebookReloaded| event is emitted
+
+==============================================================================
+9. HEALTH CHECK                                            *callisto-health*
+
+Run `:checkhealth callisto` to verify that all dependencies are installed
+and view the current configuration values.
+
+==============================================================================
+vim:tw=78:ts=8:ft=help:norl:
